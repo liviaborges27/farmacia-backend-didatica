@@ -18,10 +18,11 @@ export class Cliente {
   public getNome(): string { return this.nome; }
 
   // ========== SETTERS ==========
-  public setIdCliente(_idCliente: number): void { this.idCliente = _idCliente }
+  public setIdCliente(_idCliente: number): void { this.idCliente = _idCliente; }
   public setCpf(_cpf: string): void { this.cpf = _cpf; }
   public setNome(_nome: string): void { this.nome = _nome; }
 
+  // READ - LISTAR TODOS
   static async listarClientes(): Promise<Array<Cliente> | null> {
     try {
       let listaDeClientes: Array<Cliente> = [];
@@ -29,29 +30,44 @@ export class Cliente {
 
       const respostaBD = await database.query(querySelectClientes);
 
-      // Percorre cada linha retornada pela consulta
       respostaBD.rows.forEach((clienteBD) => {
-        // Cria um novo objeto Cliente usando os dados da linha atual (nome, cpf, telefone)
         const novoCliente: Cliente = new Cliente(
           clienteBD.nome,
           clienteBD.cpf
         );
 
         novoCliente.setIdCliente(clienteBD.id_cliente);
-        console.log(novoCliente);
         listaDeClientes.push(novoCliente);
-
       });
 
       return listaDeClientes;
     } catch (error) {
-      console.error(`Erro na consulta ao banco de dados. ${error}`);
+      console.error(`Erro na consulta ao banco de dados: ${error}`);
       return null;
     }
   }
 
+  // READ - OBTER POR ID
+  static async obterClientePorId(idCliente: number): Promise<Cliente | null> {
+    try {
+      const querySelectCliente = `SELECT * FROM cliente WHERE id_cliente = $1;`;
+      const respostaBD = await database.query(querySelectCliente, [idCliente]);
 
-  // CREATE
+      if (respostaBD.rows.length > 0) {
+        const clienteBD = respostaBD.rows[0];
+        const clienteEncontrado = new Cliente(clienteBD.nome, clienteBD.cpf);
+        clienteEncontrado.setIdCliente(clienteBD.id_cliente);
+        return clienteEncontrado;
+      }
+
+      return null;
+    } catch (error) {
+      console.error(`Erro ao buscar cliente por ID no banco de dados: ${error}`);
+      return null;
+    }
+  }
+
+  // CREATE - CADASTRAR
   static async cadastrarCliente(cliente: Cliente): Promise<boolean> {
     try {
       const queryInsertCliente = `INSERT INTO Cliente (nome, cpf)
@@ -72,7 +88,40 @@ export class Cliente {
 
     } catch (error) {
       console.error(`Erro ao cadastrar cliente: ${error}`);
-      return false
+      return false;
     }
   }
-} 
+
+  // UPDATE - ATUALIZAR
+  static async atualizarCliente(cliente: Cliente): Promise<boolean> {
+    try {
+      const queryUpdateCliente = `UPDATE cliente 
+        SET nome = $1, cpf = $2 
+        WHERE id_cliente = $3;`;
+
+      const result = await database.query(queryUpdateCliente, [
+        cliente.nome.toUpperCase(),
+        cliente.cpf,
+        cliente.idCliente
+      ]);
+
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      console.error(`Erro ao atualizar cliente: ${error}`);
+      return false;
+    }
+  }
+
+  // DELETE - REMOVER
+  static async removerCliente(idCliente: number): Promise<boolean> {
+    try {
+      const queryDeleteCliente = `DELETE FROM cliente WHERE id_cliente = $1;`;
+      const result = await database.query(queryDeleteCliente, [idCliente]);
+
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      console.error(`Erro ao remover cliente: ${error}`);
+      return false;
+    }
+  }
+}

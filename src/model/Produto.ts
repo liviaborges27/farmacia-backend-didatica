@@ -44,13 +44,13 @@ export class Produto {
     static async cadastrarProduto(produto: Produto): Promise<boolean> {
         try {
             const query = `
-        INSERT INTO produto (descricao, validade, preco, qtd_estoque, qtd_min_estoque)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id_produto;
-      `;
+                INSERT INTO produto (descricao, validade, preco, qtd_estoque, qtd_min_estoque)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id_produto;
+            `;
             const params = [
                 produto.descricao.toUpperCase(),
-                produto.validade,          // pode ser null
+                produto.validade,
                 produto.preco,
                 produto.qtdEstoque,
                 produto.qtdMinEstoque
@@ -67,7 +67,8 @@ export class Produto {
             return false;
         }
     }
-    // LISTAR: todos os produtos com flag de alerta (usando a VIEW)
+
+    // LISTAR TODOS
     static async listarTodosProdutos(): Promise<Array<{
         idProduto: number;
         descricao: string;
@@ -79,19 +80,19 @@ export class Produto {
     }>> {
         try {
             const query = `
-        SELECT 
-          p.id_produto       AS "idProduto",
-          p.descricao        AS "descricao",
-          p.validade         AS "validade",
-          p.preco            AS "preco",
-          p.qtd_estoque      AS "qtdEstoque",
-          p.qtd_min_estoque  AS "qtdMinEstoque",
-          COALESCE(v.em_alerta, FALSE) AS "emAlerta"
-        FROM produto p
-        LEFT JOIN v_produtos_alerta v
-               ON v.id_produto = p.id_produto
-        ORDER BY p.id_produto;
-      `;
+                SELECT 
+                  p.id_produto       AS "idProduto",
+                  p.descricao        AS "descricao",
+                  p.validade         AS "validade",
+                  p.preco            AS "preco",
+                  p.qtd_estoque      AS "qtdEstoque",
+                  p.qtd_min_estoque  AS "qtdMinEstoque",
+                  COALESCE(v.em_alerta, FALSE) AS "emAlerta"
+                FROM produto p
+                LEFT JOIN v_produtos_alerta v
+                       ON v.id_produto = p.id_produto
+                ORDER BY p.id_produto;
+            `;
             const result = await database.query(query);
             return result.rows as any;
         } catch (error) {
@@ -100,7 +101,39 @@ export class Produto {
         }
     }
 
-    // LISTAR: somente produtos em alerta (lendo diretamente da VIEW)
+    // OBTER POR ID
+    static async obterProdutoPorId(idProduto: number): Promise<{
+        idProduto: number;
+        descricao: string;
+        validade: Date | null;
+        preco: number;
+        qtdEstoque: number;
+        qtdMinEstoque: number;
+    } | null> {
+        try {
+            const query = `
+                SELECT 
+                  id_produto      AS "idProduto",
+                  descricao       AS "descricao",
+                  validade        AS "validade",
+                  preco           AS "preco",
+                  qtd_estoque     AS "qtdEstoque",
+                  qtd_min_estoque AS "qtdMinEstoque"
+                FROM produto 
+                WHERE id_produto = $1;
+            `;
+            const result = await database.query(query, [idProduto]);
+            if (result.rows.length > 0) {
+                return result.rows[0] as any;
+            }
+            return null;
+        } catch (error) {
+            console.error(`Erro ao buscar produto por ID: ${error}`);
+            return null;
+        }
+    }
+
+    // LISTAR EM ALERTA
     static async listarProdutosEmAlerta(): Promise<Array<{
         idProduto: number;
         descricao: string;
@@ -110,15 +143,15 @@ export class Produto {
     }>> {
         try {
             const query = `
-        SELECT 
-          v.id_produto       AS "idProduto",
-          v.descricao        AS "descricao",
-          v.qtd_estoque      AS "qtdEstoque",
-          v.qtd_min_estoque  AS "qtdMinEstoque",
-          v.em_alerta        AS "emAlerta"
-        FROM v_produtos_alerta v
-        ORDER BY v.id_produto;
-      `;
+                SELECT 
+                  v.id_produto       AS "idProduto",
+                  v.descricao        AS "descricao",
+                  v.qtd_estoque      AS "qtdEstoque",
+                  v.qtd_min_estoque  AS "qtdMinEstoque",
+                  v.em_alerta        AS "emAlerta"
+                FROM v_produtos_alerta v
+                ORDER BY v.id_produto;
+            `;
             const result = await database.query(query);
             return result.rows as any;
         } catch (error) {
@@ -127,7 +160,7 @@ export class Produto {
         }
     }
 
-    // UPDATE PARCIAL: só atualiza os campos enviados
+    // UPDATE
     static async atualizarProduto(
         idProduto: number,
         campos: Partial<{
@@ -149,7 +182,7 @@ export class Produto {
             }
             if (campos.validade !== undefined) {
                 sets.push(`validade = $${idx++}`);
-                params.push(campos.validade); // pode ser null
+                params.push(campos.validade);
             }
             if (typeof campos.preco === "number") {
                 sets.push(`preco = $${idx++}`);
@@ -165,58 +198,40 @@ export class Produto {
             }
 
             if (sets.length === 0) {
-                console.warn("Nenhum campo para atualizar em Produto.");
                 return false;
             }
 
             const query = `
-        UPDATE produto
-           SET ${sets.join(", ")}
-         WHERE id_produto = $${idx}
-         RETURNING id_produto;
-      `;
+                UPDATE produto
+                   SET ${sets.join(", ")}
+                 WHERE id_produto = $${idx}
+                 RETURNING id_produto;
+            `;
             params.push(idProduto);
 
             const result = await database.query(query, params);
-            if (result.rows.length > 0) {
-                console.log(`Produto atualizado. ID: ${result.rows[0].id_produto}`);
-                return true;
-            }
-            return false;
+            return result.rows.length > 0;
         } catch (error) {
             console.error(`Erro ao atualizar produto: ${error}`);
             return false;
         }
     }
 
-    // UPDATE de estoque por delta (ajuste manual de inventário)
-    // Observação: não use este método para registrar vendas.
-    // Para venda, insira em item_venda e deixe o trigger fazer a baixa.
-    static async atualizarEstoqueDelta(
-        idProduto: number,
-        delta: number
-    ): Promise<boolean> {
+    // DELETE
+   // DELETE - Remove referências em item_venda e depois remove o produto
+    static async removerProduto(idProduto: number): Promise<boolean> {
         try {
-            const query = `
-        UPDATE produto
-           SET qtd_estoque = qtd_estoque + $1
-         WHERE id_produto = $2
-           AND (qtd_estoque + $1) >= 0
-         RETURNING id_produto, qtd_estoque;
-      `;
-            const params = [delta, idProduto];
+            // 1. Remove os vínculos em item_venda
+            const queryDeleteItens = `DELETE FROM item_venda WHERE id_produto = $1;`;
+            await database.query(queryDeleteItens, [idProduto]);
 
-            const result = await database.query(query, params);
-            if (result.rows.length > 0) {
-                console.log(
-                    `Estoque ajustado. ID: ${result.rows[0].id_produto}, novo estoque: ${result.rows[0].qtd_estoque}`
-                );
-                return true;
-            }
-            console.warn("Ajuste de estoque não aplicado (produto inexistente ou saldo ficaria negativo).");
-            return false;
+            // 2. Remove o produto da tabela produto
+            const queryDeleteProduto = `DELETE FROM produto WHERE id_produto = $1;`;
+            const result = await database.query(queryDeleteProduto, [idProduto]);
+
+            return (result.rowCount ?? 0) > 0;
         } catch (error) {
-            console.error(`Erro ao ajustar estoque: ${error}`);
+            console.error(`Erro ao remover produto: ${error}`);
             return false;
         }
     }
