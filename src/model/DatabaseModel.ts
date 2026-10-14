@@ -10,25 +10,19 @@ export class DatabaseModel {
     constructor() {
         const isProduction = process.env.NODE_ENV === 'production' || !!process.env.DATABASE_URL;
 
-        // Se houver uma URL completa de conexão (comum no Render / Supabase)
         if (process.env.DATABASE_URL) {
             this._config = {
                 connectionString: process.env.DATABASE_URL,
-                ssl: isProduction ? { rejectUnauthorized: false } : false,
-                max: 10,
-                idleTimeoutMillis: 10000
+                ssl: isProduction ? { rejectUnauthorized: false } : false
             };
         } else {
-            // Caso prefira usar variáveis separadas
             this._config = {
                 user: process.env.DB_USER,
                 host: process.env.DB_HOST,
                 database: process.env.DB_NAME,
                 password: process.env.DB_PASSWORD,
                 port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 5432,
-                ssl: isProduction ? { rejectUnauthorized: false } : false,
-                max: 10,
-                idleTimeoutMillis: 10000
+                ssl: isProduction ? { rejectUnauthorized: false } : false
             };
         }
 
@@ -37,10 +31,9 @@ export class DatabaseModel {
 
     public async testeConexao() {
         try {
-            // Testamos a conexão usando a própria pool
             const client = await this._pool.connect();
             console.log('Database connected!');
-            client.release(); // Libera o cliente de volta para a pool
+            client.release();
             return true;
         } catch (error) {
             console.log('Error to connect database X(');
